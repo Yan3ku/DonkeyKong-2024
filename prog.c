@@ -21,6 +21,11 @@
 #define PLAT_WIDTH 64
 #define PLAT_HEIGHT 8
 
+#define START_POS SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2
+
+#define JUMP_FORCE 200
+#define GRAVITY 100
+
 #define SPEEDX 50
 
 void *err_;
@@ -216,11 +221,12 @@ SDL_Rect PlayerRect(Player *player) {
 	return prect;
 }
 
-void PlayerMove(Player *player, Game *game)
+int PlayerMove(Player *player, Game *game)
 {
 	SDL_Rect prect, platform;
 	int res;
-	player->posx += player->speedx * game->delta;
+	player->posx += player->speedx * game->delta;\
+	int grounded = 0;
 
 	if ((res = PlayerIntersects(PlayerRect(player))) >= 0) {
 		platform = platformRect(platform_pos[res]);
@@ -235,15 +241,28 @@ void PlayerMove(Player *player, Game *game)
 	if ((res = PlayerIntersects(PlayerRect(player))) >= 0) {
 		platform = platformRect(platform_pos[res]);
 		if (player->speedy > 0) {
+			grounded = 1;
 			player->posy = platform.y - PLAYER_HEIGHT;
 		} else {
 			player->posy = platform.y + platform.h;
 		}
 	}
+	return grounded;
 }
 
-void PlayerUpdate(Player *player, Game *game) {
-	PlayerMove(player, game);
+int PlayerUpdate(Player *player, Game *game) {
+	return PlayerMove(player, game);
+}
+
+int isGrounded(Player *player) {
+	SDL_Rect prect, platform;
+	int res;
+	prect = PlayerRect(player);
+	prect.y += 5;
+	if ((res = PlayerIntersects(prect)) >= 0) {
+		return 1;
+	}
+	return 0;
 }
 
 
@@ -256,17 +275,20 @@ int main() {
 	Game game;
 	Player player;
 	GameInit(&game);
-	PlayerInit(&player, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-	int isUp = 0, isDown = 0;
+	PlayerInit(&player, START_POS);
+	int isUp = 0, isDown = 0, isJump = 0, isGround = 0;
 
 	while(!game.quit) {
 		GameUpdate(&game);
-		PlayerUpdate(&player, &game);
+		isGround = PlayerUpdate(&player, &game);
+		if (isGround) isJump = 0;
 		PlayerDraw(&player, &game);
-		if (IsPlayerOnLadder(PlayerRect(&player)) < 0) player.speedy = SPEEDX * 2;
-		else if (!isUp && !isDown){
-			player.speedy = 0;
-		}
+		if (!isJump) {
+			if (IsPlayerOnLadder(PlayerRect(&player)) < 0) player.speedy = GRAVITY;
+			else if (!isUp && !isDown){
+				player.speedy = 0;
+			}
+		} else player.speedy += game.delta * GRAVITY * 10;
 		while(SDL_PollEvent(&event)) {
 			switch(event.type) {
 			case SDL_KEYDOWN:
@@ -285,12 +307,19 @@ int main() {
 					player.speedy = SPEEDX;
 					break;
 				case SDLK_n:
-					PlayerInit(&player, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-					game.worldTime = 0;
+					PlayerInit(&player, START_POS);
+                                        game.worldTime = 0;
+					break;
+			        case SDLK_SPACE:
+					if (!isGrounded(&player)) break;
+					player.speedy = -JUMP_FORCE;
+					isJump = 1;
+					break;
 				}
 				break;
 			case SDL_KEYUP:
 				switch (event.key.keysym.sym) {
+
 				case SDLK_ESCAPE: game.quit = 1; break;
 				case SDLK_LEFT: if (player.speedx > 0) break;
 					player.speedx = 0;
